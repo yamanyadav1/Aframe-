@@ -13,9 +13,9 @@
         },
 
         init: function () {
-          this.isPinching = false;
           this.currentShapeIndex = 0;
-          this.shapes = []; // Yahan saare shapes ke coordinates store honge
+          this.shapes = []; 
+          this.lastShapeChange = 0; // Debounce ke liye taaki ek saath 10 baar change na ho
 
           // 1. Three.js Particle System Setup
           const particleCount = this.data.count;
@@ -44,15 +44,18 @@
           this.particleSystem = new THREE.Points(this.geometry, material);
           this.el.setObject3D('mesh', this.particleSystem);
 
-          // 2. Pre-Calculate Shapes (Maths Magic)
+          // 2. Pre-Calculate Shapes
           this.generateShapes();
 
-          // 3. Listen for Pinch Event (Quest 3 specific)
-          this.el.sceneEl.addEventListener('pinchstarted', (evt) => {
-            this.nextShape();
-          });
-          
-          // Debugging ke liye click listener bhi (Mouse user ke liye)
+          // 3. Setup Listeners for "Fist/Squeeze" Gesture
+          const leftHand = document.querySelector('#leftHand');
+          const rightHand = document.querySelector('#rightHand');
+
+          // Jab haath band karoge (Squeeze), tab nextShape call hoga
+          leftHand.addEventListener('squeezestart', () => this.nextShape());
+          rightHand.addEventListener('squeezestart', () => this.nextShape());
+
+          // Debugging (Mouse Click for PC testing)
           document.body.addEventListener('click', () => { 
              if(!AFRAME.utils.device.checkHeadsetConnected()) this.nextShape(); 
           });
@@ -78,15 +81,11 @@
           // Shape 1: Heart ❤️
           const heart = [];
           for (let i = 0; i < count; i++) {
-             // Heart parametric equation
              let t = Math.random() * Math.PI * 2;
-             // Thoda variation taaki bhara hua lage
              let r = 0.1; 
              let x = 16 * Math.pow(Math.sin(t), 3);
              let y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-             let z = (Math.random() - 0.5) * 2; // Thickness
-             
-             // Scale down fit karne ke liye
+             let z = (Math.random() - 0.5) * 2;
              heart.push(x * r, y * r + 1.5, z);
           }
           this.shapes.push(heart);
@@ -94,13 +93,13 @@
           // Shape 2: Saturn 🪐
           const saturn = [];
           for (let i = 0; i < count; i++) {
-            const isRing = Math.random() > 0.4; // 60% particles ring banenge
+            const isRing = Math.random() > 0.4;
             if (isRing) {
                const angle = Math.random() * Math.PI * 2;
-               const radius = 2 + Math.random() * 1.5; // Ring radius
+               const radius = 2 + Math.random() * 1.5;
                saturn.push(Math.cos(angle) * radius, (Math.random()-0.5)*0.1, Math.sin(angle) * radius);
             } else {
-               const r = 0.8; // Planet radius
+               const r = 0.8;
                const theta = Math.random() * Math.PI * 2;
                const phi = Math.acos(2 * Math.random() - 1);
                saturn.push(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
@@ -108,14 +107,13 @@
           }
           this.shapes.push(saturn);
           
-           // Shape 3: DNA Helix 🧬
+          // Shape 3: DNA Helix 🧬
           const dna = [];
           for (let i = 0; i < count; i++) {
-            const t = (i / count) * Math.PI * 20; // Loops
+            const t = (i / count) * Math.PI * 20;
             const x = Math.cos(t) * 1;
             const z = Math.sin(t) * 1;
             const y = (i / count) * 6 - 3;
-            // Double helix effect
             const offset = i % 2 === 0 ? 0 : Math.PI; 
             dna.push(Math.cos(t + offset), y + 1.5, Math.sin(t + offset));
           }
@@ -123,28 +121,30 @@
         },
 
         nextShape: function() {
+          // Debounce: Taaki ek hi baar mein 2-3 baar trigger na ho jaye
+          const now = Date.now();
+          if (now - this.lastShapeChange < 500) return; // 500ms delay
+          this.lastShapeChange = now;
+
           this.currentShapeIndex = (this.currentShapeIndex + 1) % this.shapes.length;
           const newShape = this.shapes[this.currentShapeIndex];
           
-          // Set new target positions
           for(let i=0; i < this.targetPositions.length; i++) {
              this.targetPositions[i] = newShape[i];
           }
         },
 
         tick: function (t, dt) {
-          // Animation Logic (Lerp) - Smooth movement
           const positions = this.geometry.attributes.position.array;
-          const speed = 3 * (dt / 1000); // Animation speed
+          // Speed thoda badhaya hai taaki palm close karte hi fast effect dikhe
+          const speed = 4 * (dt / 1000); 
 
           for (let i = 0; i < positions.length; i++) {
-            // Move current pos towards target pos
             positions[i] += (this.targetPositions[i] - positions[i]) * speed;
           }
 
-          // Rotate the whole system slowly
-          this.el.object3D.rotation.y += 0.001;
-
+          // Slow rotation
+          this.el.object3D.rotation.y += 0.002;
           this.geometry.attributes.position.needsUpdate = true;
         }
       });
@@ -159,7 +159,7 @@
       <a-entity id="leftHand" hand-tracking-controls="hand: left"></a-entity>
       <a-entity id="rightHand" hand-tracking-controls="hand: right"></a-entity>
       
-      <a-text value="Pinch to Morph Shapes" position="0 2.5 -3" align="center" color="white"></a-text>
+      <a-text value="Close Palm (Fist) to Morph" position="0 2.5 -3" align="center" color="white" width="6"></a-text>
 
       <a-entity camera look-controls position="0 1.6 0"></a-entity>
     </a-scene>
