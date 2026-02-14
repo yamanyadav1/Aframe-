@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Yaman's VR Hologram</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
+
+    <script>
+      AFRAME.registerComponent('hand-scaler', {
+        init: function () {
+          this.hologram = document.querySelector('#hologram-group');
+          this.leftHand = document.querySelector('#leftHand');
+          this.rightHand = document.querySelector('#rightHand');
+        },
+        tick: function () {
+          if (!this.hologram || !this.leftHand || !this.rightHand) return;
+          const leftPos = this.leftHand.object3D.position;
+          const rightPos = this.rightHand.object3D.position;
+          const distance = leftPos.distanceTo(rightPos);
+
+          if (distance < 0.05) return;
+
+          let scaleFactor = 0.2 + (distance * 1.5); 
+          if (scaleFactor > 4) scaleFactor = 4;
+          if (scaleFactor < 0.2) scaleFactor = 0.2;
+
+          this.hologram.setAttribute('scale', {x: scaleFactor, y: scaleFactor, z: scaleFactor});
+        }
+      });
+    </script>
+  </head>
+
+  <body>
+    <a-scene hand-scaler>
+      <a-entity environment="preset: tron; groundColor: #000000; gridColor: #00FFFF"></a-entity>
+      
+      <a-entity id="hologram-group" position="0 1.6 -1.5">
+        <a-dodecahedron radius="0.5" 
+          material="color: #00FFFF; wireframe: true; emissive: #00FFFF; emissiveIntensity: 0.5"
+          animation="property: rotation; to: 0 360 0; loop: true; dur: 10000; easing: linear">
+        </a-dodecahedron>
+        <a-sphere radius="0.2" material="color: #FF00FF; opacity: 0.7; transparent: true"></a-sphere>
+      </a-entity>
+
+      <a-entity id="leftHand" hand-controls="hand: left; handModelStyle: lowPoly; color: #FF00FF"></a-entity>
+      <a-entity id="rightHand" hand-controls="hand: right; handModelStyle: lowPoly; color: #00FFFF"></a-entity>
+      <a-entity camera look-controls position="0 1.6 0"></a-entity>
+    </a-scene>
+  </body>
+</html>
