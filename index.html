@@ -1,141 +1,156 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Yaman's Cosmic Force</title>
+    <title>Yaman's Galaxy Force</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
 
     <script>
-      AFRAME.registerComponent('cosmic-dust', {
+      AFRAME.registerComponent('galaxy-system', {
         schema: {
-          count: { type: 'int', default: 20000 } // 20k Particles for maximum density
+          count: { type: 'int', default: 20000 }
         },
 
         init: function () {
-          // --- 1. SETUP ---
           this.particleCount = this.data.count;
+          
+          // --- 1. SETUP GEOMETRY ---
           this.geometry = new THREE.BufferGeometry();
           this.positions = new Float32Array(this.particleCount * 3);
-          this.velocities = new Float32Array(this.particleCount * 3); // Har particle ki speed store hogi
           this.colors = new Float32Array(this.particleCount * 3);
+          
+          // "Home" positions (Jahan particles wapas aayenge)
+          this.homePositions = new Float32Array(this.particleCount * 3);
 
-          // Hands References
-          this.leftHand = document.querySelector('#leftHand');
-          this.rightHand = document.querySelector('#rightHand');
-
-          // Initial Explosion (Big Bang)
           for (let i = 0; i < this.particleCount; i++) {
             const i3 = i * 3;
-            // Random positions in a big box
-            this.positions[i3] = (Math.random() - 0.5) * 10;
-            this.positions[i3 + 1] = (Math.random() - 0.5) * 10 + 1.6;
-            this.positions[i3 + 2] = (Math.random() - 0.5) * 10 - 2;
+            // Spread particles in a wide area
+            this.homePositions[i3] = (Math.random() - 0.5) * 10;
+            this.homePositions[i3+1] = (Math.random() - 0.5) * 5 + 1.6; // Eye level height
+            this.homePositions[i3+2] = (Math.random() - 0.5) * 5 - 2;
 
-            // Velocities (thoda movement shuru mein)
-            this.velocities[i3] = (Math.random() - 0.5) * 0.01;
-            this.velocities[i3 + 1] = (Math.random() - 0.5) * 0.01;
-            this.velocities[i3 + 2] = (Math.random() - 0.5) * 0.01;
+            // Current positions start at home
+            this.positions[i3] = this.homePositions[i3];
+            this.positions[i3+1] = this.homePositions[i3+1];
+            this.positions[i3+2] = this.homePositions[i3+2];
 
-            // Base Color (Cyan/Blue)
-            this.colors[i3] = 0.0;     // R
-            this.colors[i3 + 1] = 0.8; // G
-            this.colors[i3 + 2] = 1.0; // B
+            // Color (Gold/Cyan mix)
+            this.colors[i3] = Math.random();
+            this.colors[i3+1] = 0.8;
+            this.colors[i3+2] = 1.0;
           }
 
           this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
           this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
 
-          // Neon Shader Material (Glowing Dots)
           const material = new THREE.PointsMaterial({
             size: 0.04,
-            vertexColors: true, // Har particle ka alag color
+            vertexColors: true,
             transparent: true,
-            opacity: 0.9,
-            blending: THREE.AdditiveBlending, // Glow effect create karta hai
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
             depthWrite: false
           });
 
-          this.system = new THREE.Points(this.geometry, material);
-          this.el.setObject3D('mesh', this.system);
+          this.mesh = new THREE.Points(this.geometry, material);
+          this.el.setObject3D('mesh', this.mesh);
+
+          // --- 2. HAND REFERENCES ---
+          this.leftHand = document.querySelector('#leftHand');
+          this.rightHand = document.querySelector('#rightHand');
+          
+          // Mouse Fallback for PC
+          this.mousePos = new THREE.Vector3(0, 0, 0);
+          this.useMouse = false;
+          
+          window.addEventListener('mousemove', (e) => {
+             this.useMouse = true;
+             // Simple mouse mapping to 3D space approx
+             this.mousePos.x = (e.clientX / window.innerWidth) * 10 - 5;
+             this.mousePos.y = -(e.clientY / window.innerHeight) * 10 + 5;
+             this.mousePos.z = -3;
+          });
         },
 
         tick: function (t, dt) {
           const positions = this.geometry.attributes.position.array;
-          const velocities = this.velocities;
-          const colors = this.geometry.attributes.color.array;
+          const count = this.particleCount;
 
-          // Hand Positions Check (Fallback to default if not tracked)
-          let lhPos = new THREE.Vector3(-1000, -1000, -1000); // Far away by default
-          let rhPos = new THREE.Vector3(-1000, -1000, -1000);
+          // Get Hand Positions safely
+          let attractPos = null; // Right Hand (Magnet)
+          let repelPos = null;   // Left Hand (Bomb)
 
-          if (this.leftHand && this.leftHand.object3D) lhPos = this.leftHand.object3D.position;
-          if (this.rightHand && this.rightHand.object3D) rhPos = this.rightHand.object3D.position;
+          if (this.rightHand && this.rightHand.object3D.position.length() > 0.1) {
+             attractPos = this.rightHand.object3D.position;
+          } else if (this.useMouse) {
+             attractPos = this.mousePos; // PC Fallback
+          }
 
-          // --- PHYSICS LOOP (The Heavy Lifting) ---
-          for (let i = 0; i < this.particleCount; i++) {
+          if (this.leftHand && this.leftHand.object3D.position.length() > 0.1) {
+             repelPos = this.leftHand.object3D.position;
+          }
+
+          // --- 3. THE LOOP ---
+          for (let i = 0; i < count; i++) {
             const i3 = i * 3;
-            
-            // Current Pos
-            let x = positions[i3];
-            let y = positions[i3 + 1];
-            let z = positions[i3 + 2];
+            let px = positions[i3];
+            let py = positions[i3+1];
+            let pz = positions[i3+2];
 
-            // 1. LEFT HAND: REPULSION (Push Away) - Shield
-            // Calculate distance to Left Hand
-            const dxL = x - lhPos.x;
-            const dyL = y - lhPos.y;
-            const dzL = z - lhPos.z;
-            const distLSq = dxL*dxL + dyL*dyL + dzL*dzL;
+            // Default: Float back to Home Position slowly
+            let tx = this.homePositions[i3];
+            let ty = this.homePositions[i3+1];
+            let tz = this.homePositions[i3+2];
 
-            if (distLSq < 2.0) { // Sirf paas wale particles par asar
-               const force = 0.02 / (distLSq + 0.1); // Strong force when close
-               velocities[i3] += dxL * force;
-               velocities[i3+1] += dyL * force;
-               velocities[i3+2] += dzL * force;
+            // LOGIC A: ATTRACTION (Right Hand - Tornado Effect)
+            if (attractPos) {
+               const dx = attractPos.x - px;
+               const dy = attractPos.y - py;
+               const dz = attractPos.z - pz;
+               const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+               if (dist < 4.0) { // Agar 4 meter ke range mein hai
+                  // Pull towards hand
+                  tx = attractPos.x;
+                  ty = attractPos.y;
+                  tz = attractPos.z;
+                  
+                  // Add Swirl (Rotation)
+                  // Ye magic hai: Positions ko twist kar raha hu hand ke around
+                  const angle = 0.05; // Swirl speed
+                  const oldX = px - attractPos.x;
+                  const oldZ = pz - attractPos.z;
+                  tx += oldX * Math.cos(angle) - oldZ * Math.sin(angle);
+                  tz += oldX * Math.sin(angle) + oldZ * Math.cos(angle);
+               }
             }
 
-            // 2. RIGHT HAND: ATTRACTION (Black Hole) - Pull In
-            const dxR = rhPos.x - x;
-            const dyR = rhPos.y - y;
-            const dzR = rhPos.z - z;
-            const distRSq = dxR*dxR + dyR*dyR + dzR*dzR;
+            // LOGIC B: REPULSION (Left Hand - Push Away)
+            if (repelPos) {
+               const dx = px - repelPos.x;
+               const dy = py - repelPos.y;
+               const dz = pz - repelPos.z;
+               const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
 
-            if (distRSq < 4.0 && distRSq > 0.05) { // Bahut paas aane par explode na ho
-               const force = 0.005 / (distRSq + 0.1); 
-               velocities[i3] += dxR * force;
-               velocities[i3+1] += dyR * force;
-               velocities[i3+2] += dzR * force;
+               if (dist < 1.5) { // 1.5 meter blast radius
+                  // Push away hard!
+                  tx = px + (dx / dist) * 2.0;
+                  ty = py + (dy / dist) * 2.0;
+                  tz = pz + (dz / dist) * 2.0;
+               }
             }
 
-            // 3. APPLY VELOCITY (Move the particle)
-            positions[i3] += velocities[i3];
-            positions[i3 + 1] += velocities[i3 + 1];
-            positions[i3 + 2] += velocities[i3 + 2];
-
-            // 4. FRICTION & CONTAINMENT (Taaki bhaag na jaye)
-            velocities[i3] *= 0.96;     // Friction (Slow down over time)
-            velocities[i3 + 1] *= 0.96;
-            velocities[i3 + 2] *= 0.96;
-
-            // Reset if too far away (Teleport back to center area)
-            if (x > 10 || x < -10 || y > 10 || y < -2 || z > 5 || z < -10) {
-               positions[i3] = (Math.random() - 0.5) * 5;
-               positions[i3 + 1] = (Math.random() - 0.5) * 5 + 1.6;
-               positions[i3 + 2] = (Math.random() - 0.5) * 5 - 2;
-               velocities[i3] = 0; velocities[i3+1] = 0; velocities[i3+2] = 0;
-            }
-
-            // 5. DYNAMIC COLOR (Based on Speed)
-            // Jitna tez, utna White/Yellow. Jitna slow, utna Blue/Purple.
-            const speed = Math.sqrt(velocities[i3]*velocities[i3] + velocities[i3+1]*velocities[i3+1] + velocities[i3+2]*velocities[i3+2]);
-            
-            colors[i3] = speed * 10;     // Red badhao speed ke sath
-            colors[i3 + 1] = 0.5 + speed * 5; // Green mix
-            colors[i3 + 2] = 1.0 - speed * 2; // Blue kam karo speed ke sath
+            // --- APPLY MOVEMENT (Smooth Lerp) ---
+            // Current se Target ki taraf 5% har frame mein move karo
+            positions[i3]   += (tx - px) * 0.05;
+            positions[i3+1] += (ty - py) * 0.05;
+            positions[i3+2] += (tz - pz) * 0.05;
           }
 
           this.geometry.attributes.position.needsUpdate = true;
-          this.geometry.attributes.color.needsUpdate = true;
+          
+          // Rotate whole system slightly for cinematic feel
+          this.el.object3D.rotation.y += 0.001;
         }
       });
     </script>
@@ -144,18 +159,20 @@
     <a-scene>
       <a-entity environment="preset: starry; groundColor: #000; grid: none; skyType: atmosphere"></a-entity>
 
-      <a-entity cosmic-dust></a-entity>
+      <a-entity galaxy-system></a-entity>
 
-      <a-entity id="leftHand" hand-tracking-controls="hand: left; modelStyle: dots">
-        <a-sphere radius="0.05" color="#FF0000" opacity="0.5" transparent="true"></a-sphere>
+      <a-entity id="rightHand" hand-tracking-controls="hand: right">
+         <a-sphere radius="0.05" color="#00FF00" opacity="0.6" transparent="true"></a-sphere>
+         <a-light type="point" color="#00FF00" intensity="0.5" distance="2"></a-light>
       </a-entity>
+
+      <a-entity id="leftHand" hand-tracking-controls="hand: left">
+         <a-sphere radius="0.05" color="#FF0000" opacity="0.6" transparent="true"></a-sphere>
+         <a-light type="point" color="#FF0000" intensity="0.5" distance="2"></a-light>
+      </a-entity>
+
+      <a-text value="Right Hand (Green) = Tornado \n Left Hand (Red) = Blast" position="0 2.5 -3" align="center" color="#FFF"></a-text>
       
-      <a-entity id="rightHand" hand-tracking-controls="hand: right; modelStyle: dots">
-         <a-sphere radius="0.05" color="#00FF00" opacity="0.5" transparent="true"></a-sphere>
-      </a-entity>
-
-      <a-text value="Right Hand: PULL | Left Hand: PUSH" position="0 2.5 -3" align="center" color="#FFF" width="8"></a-text>
-
       <a-entity camera look-controls position="0 1.6 0"></a-entity>
     </a-scene>
   </body>
