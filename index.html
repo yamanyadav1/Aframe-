@@ -1,127 +1,149 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Yaman's Iron Man Particles</title>
+    <title>Yaman's VR Particle System</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
 
     <script>
-      AFRAME.registerComponent('iron-man-particles', {
+      AFRAME.registerComponent('particle-morpher', {
         schema: {
-          count: { type: 'int', default: 20000 }
+          count: { type: 'int', default: 15000 }, // 15,000 particles
+          color: { type: 'color', default: '#00FFFF' }
         },
 
         init: function () {
-          this.count = this.data.count;
-          
-          // --- 1. SETUP PARTICLES ---
+          this.isPinching = false;
+          this.currentShapeIndex = 0;
+          this.shapes = []; // Yahan saare shapes ke coordinates store honge
+
+          // 1. Three.js Particle System Setup
+          const particleCount = this.data.count;
           this.geometry = new THREE.BufferGeometry();
-          this.positions = new Float32Array(this.count * 3);
-          this.homePositions = new Float32Array(this.count * 3); // Jahan particles wapas jayenge
-          this.colors = new Float32Array(this.count * 3);
-
-          for (let i = 0; i < this.count; i++) {
-            const i3 = i * 3;
-            // Particles ko hawa mein faila do (Floating Dust)
-            this.homePositions[i3] = (Math.random() - 0.5) * 8;
-            this.homePositions[i3+1] = (Math.random() - 0.5) * 4 + 1.6;
-            this.homePositions[i3+2] = (Math.random() - 0.5) * 4 - 2;
-
-            this.positions[i3] = this.homePositions[i3];
-            this.positions[i3+1] = this.homePositions[i3+1];
-            this.positions[i3+2] = this.homePositions[i3+2];
-
-            // Gold/Energy Color
-            this.colors[i3] = 0.2; // R
-            this.colors[i3+1] = 0.8; // G
-            this.colors[i3+2] = 1.0; // B
+          this.positions = new Float32Array(particleCount * 3);
+          this.targetPositions = new Float32Array(particleCount * 3);
+          
+          // Initial positions (Random Cloud)
+          for (let i = 0; i < particleCount * 3; i++) {
+            this.positions[i] = (Math.random() - 0.5) * 10;
+            this.targetPositions[i] = this.positions[i];
           }
 
           this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-          this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
 
+          // Glowing Material
           const material = new THREE.PointsMaterial({
-            size: 0.02,
-            vertexColors: true,
+            color: this.data.color,
+            size: 0.03,
             transparent: true,
             opacity: 0.8,
             blending: THREE.AdditiveBlending,
             depthWrite: false
           });
 
-          this.mesh = new THREE.Points(this.geometry, material);
-          this.el.setObject3D('mesh', this.mesh);
+          this.particleSystem = new THREE.Points(this.geometry, material);
+          this.el.setObject3D('mesh', this.particleSystem);
 
-          // --- 2. HAND VECTORS (Important Fix) ---
-          this.leftHandEl = document.querySelector('#leftHand');
-          this.rightHandEl = document.querySelector('#rightHand');
+          // 2. Pre-Calculate Shapes (Maths Magic)
+          this.generateShapes();
+
+          // 3. Listen for Pinch Event (Quest 3 specific)
+          this.el.sceneEl.addEventListener('pinchstarted', (evt) => {
+            this.nextShape();
+          });
           
-          // Ye vectors store karenge asli position
-          this.leftVec = new THREE.Vector3();
-          this.rightVec = new THREE.Vector3();
+          // Debugging ke liye click listener bhi (Mouse user ke liye)
+          document.body.addEventListener('click', () => { 
+             if(!AFRAME.utils.device.checkHeadsetConnected()) this.nextShape(); 
+          });
+        },
+
+        generateShapes: function() {
+          const count = this.data.count;
+          
+          // Shape 0: Sphere
+          const sphere = [];
+          for (let i = 0; i < count; i++) {
+            const r = 1.5;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            sphere.push(
+              r * Math.sin(phi) * Math.cos(theta),
+              r * Math.sin(phi) * Math.sin(theta),
+              r * Math.cos(phi)
+            );
+          }
+          this.shapes.push(sphere);
+
+          // Shape 1: Heart ❤️
+          const heart = [];
+          for (let i = 0; i < count; i++) {
+             // Heart parametric equation
+             let t = Math.random() * Math.PI * 2;
+             // Thoda variation taaki bhara hua lage
+             let r = 0.1; 
+             let x = 16 * Math.pow(Math.sin(t), 3);
+             let y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+             let z = (Math.random() - 0.5) * 2; // Thickness
+             
+             // Scale down fit karne ke liye
+             heart.push(x * r, y * r + 1.5, z);
+          }
+          this.shapes.push(heart);
+
+          // Shape 2: Saturn 🪐
+          const saturn = [];
+          for (let i = 0; i < count; i++) {
+            const isRing = Math.random() > 0.4; // 60% particles ring banenge
+            if (isRing) {
+               const angle = Math.random() * Math.PI * 2;
+               const radius = 2 + Math.random() * 1.5; // Ring radius
+               saturn.push(Math.cos(angle) * radius, (Math.random()-0.5)*0.1, Math.sin(angle) * radius);
+            } else {
+               const r = 0.8; // Planet radius
+               const theta = Math.random() * Math.PI * 2;
+               const phi = Math.acos(2 * Math.random() - 1);
+               saturn.push(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
+            }
+          }
+          this.shapes.push(saturn);
+          
+           // Shape 3: DNA Helix 🧬
+          const dna = [];
+          for (let i = 0; i < count; i++) {
+            const t = (i / count) * Math.PI * 20; // Loops
+            const x = Math.cos(t) * 1;
+            const z = Math.sin(t) * 1;
+            const y = (i / count) * 6 - 3;
+            // Double helix effect
+            const offset = i % 2 === 0 ? 0 : Math.PI; 
+            dna.push(Math.cos(t + offset), y + 1.5, Math.sin(t + offset));
+          }
+          this.shapes.push(dna);
+        },
+
+        nextShape: function() {
+          this.currentShapeIndex = (this.currentShapeIndex + 1) % this.shapes.length;
+          const newShape = this.shapes[this.currentShapeIndex];
+          
+          // Set new target positions
+          for(let i=0; i < this.targetPositions.length; i++) {
+             this.targetPositions[i] = newShape[i];
+          }
         },
 
         tick: function (t, dt) {
+          // Animation Logic (Lerp) - Smooth movement
           const positions = this.geometry.attributes.position.array;
-          
-          // --- 3. GET WORLD POSITION (The Magic Fix) ---
-          // Hum seedha position nahi lenge, hum World Position mangenge
-          if (this.leftHandEl && this.leftHandEl.object3D) {
-             this.leftHandEl.object3D.getWorldPosition(this.leftVec);
-          }
-          if (this.rightHandEl && this.rightHandEl.object3D) {
-             this.rightHandEl.object3D.getWorldPosition(this.rightVec);
+          const speed = 3 * (dt / 1000); // Animation speed
+
+          for (let i = 0; i < positions.length; i++) {
+            // Move current pos towards target pos
+            positions[i] += (this.targetPositions[i] - positions[i]) * speed;
           }
 
-          // --- 4. PARTICLE LOGIC ---
-          for (let i = 0; i < this.count; i++) {
-            const i3 = i * 3;
-            let px = positions[i3];
-            let py = positions[i3+1];
-            let pz = positions[i3+2];
-
-            // Target = Home Position (Default)
-            let tx = this.homePositions[i3];
-            let ty = this.homePositions[i3+1];
-            let tz = this.homePositions[i3+2];
-
-            // --- RIGHT HAND: MAGNET (Attract) ---
-            // Distance check
-            const dxR = this.rightVec.x - px;
-            const dyR = this.rightVec.y - py;
-            const dzR = this.rightVec.z - pz;
-            const distR = Math.sqrt(dxR*dxR + dyR*dyR + dzR*dzR);
-
-            if (distR < 0.5) { // Agar 0.5 meter ke daayre mein hai (Hand ke pass)
-               // Particle ko haath ki taraf kheencho
-               tx = this.rightVec.x;
-               ty = this.rightVec.y;
-               tz = this.rightVec.z;
-               
-               // Thoda Randomness (Electric Effect)
-               tx += (Math.random() - 0.5) * 0.2;
-               ty += (Math.random() - 0.5) * 0.2;
-               tz += (Math.random() - 0.5) * 0.2;
-            }
-
-            // --- LEFT HAND: REPULSOR (Push) ---
-            const dxL = px - this.leftVec.x;
-            const dyL = py - this.leftVec.y;
-            const dzL = pz - this.leftVec.z;
-            const distL = Math.sqrt(dxL*dxL + dyL*dyL + dzL*dzL);
-
-            if (distL < 0.5) { // Agar Left hand ke pass hai
-               // Blast away!
-               tx = px + dxL * 5; 
-               ty = py + dyL * 5;
-               tz = pz + dzL * 5;
-            }
-
-            // --- MOVE PARTICLE (Lerp for smoothness) ---
-            positions[i3]   += (tx - px) * 0.1; // 10% movement per frame
-            positions[i3+1] += (ty - py) * 0.1;
-            positions[i3+2] += (tz - pz) * 0.1;
-          }
+          // Rotate the whole system slowly
+          this.el.object3D.rotation.y += 0.001;
 
           this.geometry.attributes.position.needsUpdate = true;
         }
@@ -132,18 +154,13 @@
     <a-scene>
       <a-entity environment="preset: starry; groundColor: #111; grid: none"></a-entity>
 
-      <a-entity iron-man-particles></a-entity>
+      <a-entity particle-morpher="count: 15000; color: #00FFFF" position="0 1 -2"></a-entity>
 
-      <a-entity id="leftHand" hand-tracking-controls="hand: left">
-         <a-sphere radius="0.1" color="red" wireframe="true" opacity="0.5"></a-sphere>
-      </a-entity>
+      <a-entity id="leftHand" hand-tracking-controls="hand: left"></a-entity>
+      <a-entity id="rightHand" hand-tracking-controls="hand: right"></a-entity>
       
-      <a-entity id="rightHand" hand-tracking-controls="hand: right">
-         <a-sphere radius="0.1" color="green" wireframe="true" opacity="0.5"></a-sphere>
-      </a-entity>
+      <a-text value="Pinch to Morph Shapes" position="0 2.5 -3" align="center" color="white"></a-text>
 
-      <a-text value="Right Hand (Green) = Attract \n Left Hand (Red) = Repel" position="0 2.5 -3" align="center" color="#FFF"></a-text>
-      
       <a-entity camera look-controls position="0 1.6 0"></a-entity>
     </a-scene>
   </body>
